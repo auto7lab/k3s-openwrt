@@ -1,0 +1,36 @@
+# cluster options
+token: __TOKEN__
+cluster-init: true
+
+# admin kubeconfig
+write-kubeconfig-mode: "0644"
+
+# logging
+# debug: false
+
+# listeners
+bind-address: "0.0.0.0"
+https-listen-port: 6443
+
+# data
+data-dir: /var/lib/rancher/k3s
+
+# networking
+cluster-cidr: "10.42.0.0/16"
+service-cidr: "10.43.0.0/16"
+service-node-port-range: "30000-32767"
+cluster-dns: "10.43.0.10"
+cluster-domain: "cluster.local"
+flannel-backend: vxlan
+
+# storage
+default-local-storage-path: /data
+
+# components
+disable:
+- servicelb
+- traefik
+- metrics-server
+
+node-label:
+  - role=master
