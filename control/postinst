@@ -1,0 +1,22 @@
+#!/bin/sh
+# Post-installation script for k3s package
+
+BIN_DIR=/usr/bin
+
+for cmd in kubectl crictl ctr; do
+    if [ ! -e "${BIN_DIR}/${cmd}" ]; then
+        which_cmd=$(command -v ${cmd} 2>/dev/null || true)
+        if [ -z "${which_cmd}" ]; then
+            ln -sf /usr/bin/k3s $BIN_DIR/${cmd}
+        else
+            echo "Skipping ${BIN_DIR}/${cmd} symlink to k3s, command exists in PATH at ${which_cmd}"
+        fi
+    else
+        echo "Skipping ${BIN_DIR}/${cmd} symlink to k3s, already exists"
+    fi
+done
+
+/etc/init.d/k3s enable
+/etc/init.d/k3s start
+
+exit 0

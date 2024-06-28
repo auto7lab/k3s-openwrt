@@ -1,0 +1,15 @@
+#!/bin/ash
+
+BIN_DIR=/usr/bin
+
+for cmd in kubectl crictl ctr; do
+    target="${BIN_DIR}/${cmd}"
+    if [ -L "${target}" ]; then
+        link_target=$(readlink "${target}")
+        if [ "${link_target}" == "${BIN_DIR}/k3s" ]; then
+            rm -rf ${target} && echo "removed ${target}"
+        fi
+    fi
+done
+
+echo "k3s data dir not removed, please delete them manually."

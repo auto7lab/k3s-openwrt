@@ -1,7 +1,3 @@
-# cluster options
-token: __TOKEN__
-cluster-init: true
-
 # admin kubeconfig
 write-kubeconfig-mode: "0644"
 
@@ -13,7 +9,7 @@ bind-address: "0.0.0.0"
 https-listen-port: 6443
 
 # data
-data-dir: /var/lib/rancher/k3s
+data-dir: /opt/rancher/k3s
 
 # networking
 cluster-cidr: "10.42.0.0/16"
@@ -34,3 +30,7 @@ disable:
 
 node-label:
   - role=master
+
+# cluster options
+cluster-init: true
+# token: token

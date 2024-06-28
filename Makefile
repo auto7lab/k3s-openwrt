@@ -18,17 +18,14 @@ define CONTROL
 Package: k3s
 Version: ${VERSION}-${PVERSION}
 Architecture: ${ARCH}
-Maintainer: Richard Feng
+Maintainer: Richard Feng <kvcnow@gmail.com>
 Depends: iptables, iptables-mod-extra, kmod-ipt-extra, iptables-mod-extra, kmod-br-netfilter, ca-certificates, vxlan
+License: Apache-2.0
+LicenseFiles: LICENSE
+Section: utils
 Description: k3s package for openwrt
 endef
 export CONTROL
-
-define Package/k3s/install
-	$(INSTALL_DIR) $(1)/CONTROL
-	$(INSTALL_BIN) ./files/postrm $(1)/CONTROL/postrm
-endef
-
 
 .PHONY: all clean release build-all
 
@@ -66,10 +63,13 @@ $(DIR)/pkg/debian-binary: $(DIR)/pkg
 	echo 2.0 > $@
 
 $(DIR)/pkg/control: $(DIR)/pkg
-	echo "$$CONTROL" > "$@"
+	mkdir -p "$@"
+	cp -r control/* "$@"
+	chmod a+x "$@"/*
+	echo "$$CONTROL" > "$@/control"
 
 $(DIR)/pkg/control.tar.gz: $(DIR)/pkg/control
-	tar -C $(DIR)/pkg -czvf "$@" control
+	tar -C $(DIR)/pkg/control -czvf "$@" .
 
 clean:
 	rm -rf build/
