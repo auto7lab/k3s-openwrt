@@ -1,7 +1,10 @@
 #!/bin/sh
 # Post-installation script for k3s package
 
+. /lib/functions/network.sh
+
 BIN_DIR=/usr/bin
+CONFIG_FILE=/etc/rancher/k3s/config.yaml
 
 for cmd in kubectl crictl ctr; do
     if [ ! -e "${BIN_DIR}/${cmd}" ]; then
@@ -12,11 +15,25 @@ for cmd in kubectl crictl ctr; do
             echo "Skipping ${BIN_DIR}/${cmd} symlink to k3s, command exists in PATH at ${which_cmd}"
         fi
     else
-        echo "Skipping ${BIN_DIR}/${cmd} symlink to k3s, already exists"
+        echo "Skipping ${BIN_DIR}/${cmd} symlink to k3s, already exists."
     fi
 done
 
-/etc/init.d/k3s enable
-/etc/init.d/k3s start
+# bind device to eth0
+BIND_INTERFACE="1000M"
+network_get_ipaddr NET_ADDR "${BIND_INTERFACE}"
+if [ -z "${NET_ADDR}" ]; then
+    echo -e "\033[0;31mNo ip found for interface ${BIND_INTERFACE}.\033[0m"
+else
+    echo "### Configs generated"
+    echo "bind-address: ${NET_ADDR}" >> ${CONFIG_FILE}
+    echo "node-ip: ${NET_ADDR}" >> ${CONFIG_FILE}
+    echo "node-name: ${NET_ADDR}" >> ${CONFIG_FILE}
+fi
+
+echo '###################################################'
+echo '# To auto start k3s run "/etc/init.d/k3s enable"'
+echo '# To manually start k3s run "/etc/init.d/k3s start"'
+echo '###################################################'
 
 exit 0

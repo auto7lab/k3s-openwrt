@@ -12,4 +12,8 @@ for cmd in kubectl crictl ctr; do
     fi
 done
 
-echo "k3s data dir not removed, please delete them manually."
+read -p "Are you want to remove data of k3s? [N/Y]"
+echo
+if [[ "$REPLY" == "Y" ]] || [[ "$REPLY" == "y" ]]; then
+    rm -rf /var/lib/rancher/k3s
+fi

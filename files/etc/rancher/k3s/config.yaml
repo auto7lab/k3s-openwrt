@@ -1,15 +1,15 @@
 # admin kubeconfig
 write-kubeconfig-mode: "0644"
+prefer-bundled-bin: true
 
 # logging
 # debug: false
 
 # listeners
-bind-address: "0.0.0.0"
-https-listen-port: 6443
+# https-listen-port: 6443
 
 # data
-data-dir: /opt/rancher/k3s
+# data-dir: /var/lib/rancher/k3s
 
 # networking
 cluster-cidr: "10.42.0.0/16"
@@ -18,18 +18,20 @@ service-node-port-range: "30000-32767"
 cluster-dns: "10.43.0.10"
 cluster-domain: "cluster.local"
 flannel-backend: vxlan
+egress-selector-mode: disabled
 
-# storage
-default-local-storage-path: /data
-
-# components
+# disable components coredns, servicelb, traefik, local-storage, metrics-server, runtimes
 disable:
 - servicelb
 - traefik
-- metrics-server
+# - metrics-server
+# - local-storage
 
-node-label:
-  - role=master
+# storage set local-storage data dir
+default-local-storage-path: /data
+
+node-label: []
+#  - role=master
 
 # cluster options
 cluster-init: true
