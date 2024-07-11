@@ -1,5 +1,6 @@
 # admin kubeconfig
-write-kubeconfig-mode: "0644"
+write-kubeconfig: /root/.kube/config
+write-kubeconfig-mode: "0440"
 prefer-bundled-bin: true
 
 # logging
@@ -9,7 +10,7 @@ prefer-bundled-bin: true
 # https-listen-port: 6443
 
 # data
-# data-dir: /var/lib/rancher/k3s
+data-dir: /opt/rancher/k3s
 
 # networking
 cluster-cidr: "10.42.0.0/16"

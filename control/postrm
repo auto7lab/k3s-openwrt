@@ -15,5 +15,5 @@ done
 read -p "Are you want to remove data of k3s? [N/Y]"
 echo
 if [[ "$REPLY" == "Y" ]] || [[ "$REPLY" == "y" ]]; then
-    rm -rf /var/lib/rancher/k3s
+    rm -rf /opt/rancher/k3s
 fi

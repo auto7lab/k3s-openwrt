@@ -52,8 +52,8 @@ $(DIR)/data: $(FILES)
 	curl -sfLo "$@/usr/bin/k3s" \
 		"https://github.com/k3s-io/k3s/releases/download/v$(VERSION)/k3s-$(download_arch)"
 	chmod a+x "$@/usr/bin/k3s"
-	mkdir -p "$@/var/lib/rancher/k3s/agent/images"
-	curl -sfLo "$@/var/lib/rancher/k3s/agent/images/k3s-airgap-images-$(download_arch).tar.zst" \
+	mkdir -p "$@/opt/rancher/k3s/agent/images"
+	curl -sfLo "$@/opt/rancher/k3s/agent/images/k3s-airgap-images-$(download_arch).tar.zst" \
 		"https://github.com/k3s-io/k3s/releases/download/v$(VERSION)/k3s-airgap-images-$(download_arch).tar.zst"
 
 $(DIR)/pkg/data.tar.gz: $(DIR)/data

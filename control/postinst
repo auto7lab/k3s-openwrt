@@ -19,21 +19,164 @@ for cmd in kubectl crictl ctr; do
     fi
 done
 
-# bind device to eth0
+DEFAULT_INTERFACE="1000M"
 BIND_INTERFACE="1000M"
-network_get_ipaddr NET_ADDR "${BIND_INTERFACE}"
-if [ -z "${NET_ADDR}" ]; then
-    echo -e "\033[0;31mNo ip found for interface ${BIND_INTERFACE}.\033[0m"
-else
-    echo "### Configs generated"
-    echo "bind-address: ${NET_ADDR}" >> ${CONFIG_FILE}
-    echo "node-ip: ${NET_ADDR}" >> ${CONFIG_FILE}
-    echo "node-name: ${NET_ADDR}" >> ${CONFIG_FILE}
-fi
+BIND_ADDR=""
+BIND_DEVICE=""
 
-echo '###################################################'
-echo '# To auto start k3s run "/etc/init.d/k3s enable"'
-echo '# To manually start k3s run "/etc/init.d/k3s start"'
-echo '###################################################'
+setup_interface() {
+    network_get_ipaddr BIND_ADDR "${DEFAULT_INTERFACE}"
+    network_get_device BIND_DEVICE "${DEFAULT_INTERFACE}"
+
+    local input
+    while true; do
+        echo -e "Specified the interface for k3s binding, ENTER to use ${DEFAULT_INTERFACE}:"
+        read input 
+        if [[ -n "${input}"]]; then
+            network_get_ipaddr BIND_ADDR "${input}"
+            network_get_device BIND_DEVICE "${input}"
+        fi
+        local retry=""
+        if [[ -z "${BIND_ADDR}" ]]; then
+            echo -e "\033[0;31mNo IP found for interface ${input}.\033[0m"
+            retry="1"
+        fi
+        if [[ -z "${BIND_DEVICE}" ]]; then
+            echo -e "\033[0;31mCAN'T found device name of interface ${input}.\033[0m"
+            retry="1"
+        fi
+        if [[ -z "${retry}" ]]; then
+            break
+        fi
+    done
+}
+
+setup_keepalived() {
+    local role="BACKUP"
+    local vip=""
+
+    while true; do
+        echo -e "Specified one IP for keepalived to used as VIP, Q/q to skip setup"
+        read input
+        if [[ "${input}" = "q" ]] || [[ "${input}" = "Q" ]]; then
+            return
+        fi
+        if [[ -n "{$input}" ]]; then
+            vip=${input}
+            break
+        fi
+    done
+
+    echo -e "Run keepalived as a MASTER node? ENTER or [Y/y] is YES, any other input as BACKUP node: "
+    read -n 1 input 
+    if [[ -z "${input}" ]] ||  [[ "${input}" = "y" ]] || [[ "${input}" = "Y" ]]; then
+        role="MASTER"
+    fi
+
+    cat << _EOF_ > /etc/keepalived/keepalived.conf
+vrrp_instance VI_1 {
+    state ${role}
+    interface ${BIND_DEVICE}
+    virtual_router_id 61
+    priority 100
+    advert_int 1
+    authentication {
+        auth_type PASS
+        auth_pass "Woofu9ixierovunu"
+    }
+    virtual_ipaddress {
+        ${vip}
+    }
+}
+_EOF_
+    service keepalived stop
+    sleep 1
+    service keepalived start
+    service keepalived enable
+}
+
+setup_k3s() {
+    local node_ip=${BIND_ADDR}
+    local role="agent"
+    local server=""
+    local token=""
+
+    echo -e "Setup as a k3s SERVER node? ENTER or Y/y is YES, any other input as a agent node: "
+    read -n 1 input
+    if [[ -z "${input}" ]] ||  [[ "${input}" = "y" ]] || [[ "${input}" = "Y" ]]; then
+        role="master"
+    fi
+
+    if [[ "${role}" = "master" ]]; then
+        echo -e "Specify k3s server node address to join, ENTER to SKIP and run a standalone server: "
+        read -n input
+        server="${input}"
+
+        if [[ -n "${server}" ]]; then
+            while true; do
+                echo -e "Specify k3s server join token (get from the server file /opt/rancher/k3s/server/token): "
+                read -n input
+                if [[ -n "${input}" ]]; then
+                    token="${input}"
+                    break
+                fi
+            done
+            echo "server: ${server}" >> ${CONFIG_FILE}
+            echo "token: ${token}" >> ${CONFIG_FILE}
+            echo >> ${CONFIG_FILE}
+        fi
+        echo "bind-address: ${BIND_ADDR}" >> ${CONFIG_FILE}
+        echo "node-ip: ${BIND_ADDR}" >> ${CONFIG_FILE}
+        echo "node-name: ${BIND_ADDR}" >> ${CONFIG_FILE}
+    else
+        while true; do
+            echo -e "Specify k3s server node address to join: "
+            read -n input
+            if [[ -n "${input}" ]]; then
+                server="${input}"
+                break
+            fi
+        done
+
+        while true; do
+            echo -e "Specify k3s agent join token (get from the server file /opt/rancher/k3s/server/agent-token): "
+            read -n input
+            if [[ -n "${input}" ]]; then
+                token="${input}"
+                break
+            fi
+        done
+        echo "server: ${server}" >> ${CONFIG_FILE}
+        echo "agent-token: ${token}" >> ${CONFIG_FILE}
+        echo >> ${CONFIG_FILE}
+        echo "bind-address: ${BIND_ADDR}" >> ${CONFIG_FILE}
+        echo "node-ip: ${BIND_ADDR}" >> ${CONFIG_FILE}
+        echo "node-name: ${BIND_ADDR}" >> ${CONFIG_FILE}
+    fi
+
+    service k3s enable
+    service k3s start
+    echo -e "Waiting k3s service to startup..."
+    local startup=1
+    for i in $(seq 1 300); do
+        kubectl get nodes 2>&1 > /dev/null
+        if [[ $? -eq 0 ]]; then
+            startup=0
+            break
+        fi
+        sleep 1
+    done
+
+    if [[ $startup -eq 0 ]]; then
+        echo -e "K3s startup succeed, try to use kubectl to deployment apps."
+    else
+        echo -e "\033[0;31mStartup k3s failed, please check k3s logs.\033[0m"
+    fi
+}
+
+setup_interface
+setup_keepalived
+setup_k3s
 
 exit 0
+
