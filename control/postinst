@@ -6,48 +6,37 @@
 BIN_DIR=/usr/bin
 CONFIG_FILE=/etc/rancher/k3s/config.yaml
 
-for cmd in kubectl crictl ctr; do
-    if [ ! -e "${BIN_DIR}/${cmd}" ]; then
-        which_cmd=$(command -v ${cmd} 2>/dev/null || true)
-        if [ -z "${which_cmd}" ]; then
-            ln -sf /usr/bin/k3s $BIN_DIR/${cmd}
+create_symlinks() {
+    for cmd in kubectl crictl ctr; do
+        if [ ! -e "${BIN_DIR}/${cmd}" ]; then
+            which_cmd=$(command -v ${cmd} 2>/dev/null || true)
+            if [ -z "${which_cmd}" ]; then
+                ln -sf /usr/bin/k3s "$BIN_DIR/${cmd}"
+            else
+                echo "Skipping ${BIN_DIR}/${cmd} symlink to k3s, command exists in PATH at ${which_cmd}"
+            fi
         else
-            echo "Skipping ${BIN_DIR}/${cmd} symlink to k3s, command exists in PATH at ${which_cmd}"
+            echo "Skipping ${BIN_DIR}/${cmd} symlink to k3s, already exists."
         fi
-    else
-        echo "Skipping ${BIN_DIR}/${cmd} symlink to k3s, already exists."
-    fi
-done
-
-DEFAULT_INTERFACE="1000M"
-BIND_INTERFACE="1000M"
-BIND_ADDR=""
-BIND_DEVICE=""
+    done
+}
 
 setup_interface() {
+    local DEFAULT_INTERFACE="1000M"
+
     network_get_ipaddr BIND_ADDR "${DEFAULT_INTERFACE}"
     network_get_device BIND_DEVICE "${DEFAULT_INTERFACE}"
 
-    local input
     while true; do
-        echo -e "Specified the interface for k3s binding, ENTER to use ${DEFAULT_INTERFACE}:"
-        read input 
-        if [[ -n "${input}"]]; then
+        printf "Specify the interface for k3s binding, ENTER to use %s: " "${DEFAULT_INTERFACE}"
+        read -r input
+        [ -n "${input}" ] && {
             network_get_ipaddr BIND_ADDR "${input}"
             network_get_device BIND_DEVICE "${input}"
-        fi
-        local retry=""
-        if [[ -z "${BIND_ADDR}" ]]; then
-            echo -e "\033[0;31mNo IP found for interface ${input}.\033[0m"
-            retry="1"
-        fi
-        if [[ -z "${BIND_DEVICE}" ]]; then
-            echo -e "\033[0;31mCAN'T found device name of interface ${input}.\033[0m"
-            retry="1"
-        fi
-        if [[ -z "${retry}" ]]; then
-            break
-        fi
+        }
+        [ -z "${BIND_ADDR}" ] && echo "\033[0;31mNo IP found for interface ${input}.\033[0m" && continue
+        [ -z "${BIND_DEVICE}" ] && echo "\033[0;31mCAN'T find device name of interface ${input}.\033[0m" && continue
+        break
     done
 }
 
@@ -56,24 +45,17 @@ setup_keepalived() {
     local vip=""
 
     while true; do
-        echo -e "Specified one IP for keepalived to used as VIP, Q/q to skip setup"
-        read input
-        if [[ "${input}" = "q" ]] || [[ "${input}" = "Q" ]]; then
-            return
-        fi
-        if [[ -n "{$input}" ]]; then
-            vip=${input}
-            break
-        fi
+        printf "Specify the IP for keepalived to use as VIP, ENTER to skip: "
+        read -r input
+        [ -z "${input}" ] && return
+        [ -n "${input}" ] && { vip=${input}; break; }
     done
 
-    echo -e "Run keepalived as a MASTER node? ENTER or [Y/y] is YES, any other input as BACKUP node: "
-    read -n 1 input 
-    if [[ -z "${input}" ]] ||  [[ "${input}" = "y" ]] || [[ "${input}" = "Y" ]]; then
-        role="MASTER"
-    fi
+    printf "Run keepalived as a MASTER node? ENTER or [Y/y] is YES, any other input as BACKUP node: "
+    read -r input
+    [ -z "${input}" ] || [ "${input}" = "y" ] || [ "${input}" = "Y" ] && role="MASTER"
 
-    cat << _EOF_ > /etc/keepalived/keepalived.conf
+    cat << EOF > /etc/keepalived/keepalived.conf
 vrrp_instance VI_1 {
     state ${role}
     interface ${BIND_DEVICE}
@@ -88,7 +70,7 @@ vrrp_instance VI_1 {
         ${vip}
     }
 }
-_EOF_
+EOF
     service keepalived stop
     sleep 1
     service keepalived start
@@ -96,87 +78,73 @@ _EOF_
 }
 
 setup_k3s() {
-    local node_ip=${BIND_ADDR}
     local role="agent"
     local server=""
     local token=""
 
-    echo -e "Setup as a k3s SERVER node? ENTER or Y/y is YES, any other input as a agent node: "
-    read -n 1 input
-    if [[ -z "${input}" ]] ||  [[ "${input}" = "y" ]] || [[ "${input}" = "Y" ]]; then
-        role="master"
-    fi
+    printf "Setup as a k3s SERVER node? ENTER or Y/y is YES, any other input as an agent node: "
+    read -r input
+    [ -z "${input}" ] || [ "${input}" = "y" ] || [ "${input}" = "Y" ] && role="master"
 
-    if [[ "${role}" = "master" ]]; then
-        echo -e "Specify k3s server node address to join, ENTER to SKIP and run a standalone server: "
-        read -n input
-        server="${input}"
-
-        if [[ -n "${server}" ]]; then
+    if [ "${role}" = "master" ]; then
+        printf "Specify k3s server node address to join, ENTER to SKIP and run a standalone server: "
+        read -r server
+        if [ -n "${server}" ]; then
             while true; do
-                echo -e "Specify k3s server join token (get from the server file /opt/rancher/k3s/server/token): "
-                read -n input
-                if [[ -n "${input}" ]]; then
-                    token="${input}"
-                    break
-                fi
+                printf "Specify k3s server join token (get from the server file /opt/rancher/k3s/server/token): "
+                read -r token
+                [ -n "${token}" ] && break
             done
-            echo "server: ${server}" >> ${CONFIG_FILE}
-            echo "token: ${token}" >> ${CONFIG_FILE}
-            echo >> ${CONFIG_FILE}
+            {
+                echo "server: ${server}"
+                echo "token: ${token}"
+                echo
+            } >> "${CONFIG_FILE}"
         fi
-        echo "bind-address: ${BIND_ADDR}" >> ${CONFIG_FILE}
-        echo "node-ip: ${BIND_ADDR}" >> ${CONFIG_FILE}
-        echo "node-name: ${BIND_ADDR}" >> ${CONFIG_FILE}
+        {
+            echo "bind-address: ${BIND_ADDR}"
+            echo "node-ip: ${BIND_ADDR}"
+            echo "node-name: ${BIND_ADDR}"
+        } >> "${CONFIG_FILE}"
     else
         while true; do
-            echo -e "Specify k3s server node address to join: "
-            read -n input
-            if [[ -n "${input}" ]]; then
-                server="${input}"
-                break
-            fi
+            printf "Specify k3s server node address to join: "
+            read -r server
+            [ -n "${server}" ] && break
         done
 
         while true; do
-            echo -e "Specify k3s agent join token (get from the server file /opt/rancher/k3s/server/agent-token): "
-            read -n input
-            if [[ -n "${input}" ]]; then
-                token="${input}"
-                break
-            fi
+            printf "Specify k3s agent join token (get from the server file /opt/rancher/k3s/server/agent-token): "
+            read -r token
+            [ -n "${token}" ] && break
         done
-        echo "server: ${server}" >> ${CONFIG_FILE}
-        echo "agent-token: ${token}" >> ${CONFIG_FILE}
-        echo >> ${CONFIG_FILE}
-        echo "bind-address: ${BIND_ADDR}" >> ${CONFIG_FILE}
-        echo "node-ip: ${BIND_ADDR}" >> ${CONFIG_FILE}
-        echo "node-name: ${BIND_ADDR}" >> ${CONFIG_FILE}
+        {
+            echo "server: ${server}"
+            echo "agent-token: ${token}"
+            echo
+            echo "bind-address: ${BIND_ADDR}"
+            echo "node-ip: ${BIND_ADDR}"
+            echo "node-name: ${BIND_ADDR}"
+        } >> "${CONFIG_FILE}"
     fi
 
     service k3s enable
     service k3s start
-    echo -e "Waiting k3s service to startup..."
-    local startup=1
+    echo "Waiting for k3s service to startup..."
     for i in $(seq 1 300); do
-        kubectl get nodes 2>&1 > /dev/null
-        if [[ $? -eq 0 ]]; then
-            startup=0
-            break
-        fi
+        kubectl get nodes >/dev/null 2>&1 && { echo "K3s startup succeeded, try to use kubectl to deploy apps."; return; }
         sleep 1
     done
-
-    if [[ $startup -eq 0 ]]; then
-        echo -e "K3s startup succeed, try to use kubectl to deployment apps."
-    else
-        echo -e "\033[0;31mStartup k3s failed, please check k3s logs.\033[0m"
-    fi
+    echo "\033[0;31mStartup k3s failed, please check k3s logs.\033[0m"
 }
 
-setup_interface
-setup_keepalived
-setup_k3s
+main() {
+    create_symlinks
+    setup_interface
+    setup_keepalived
+    setup_k3s
+}
+
+main
 
 exit 0
-
