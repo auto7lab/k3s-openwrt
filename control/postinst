@@ -136,13 +136,23 @@ setup_k3s() {
         sleep 1
     done
     echo "\033[0;31mStartup k3s failed, please check k3s logs.\033[0m"
+    return 1
+}
+
+setup_dashboard() {
+    helm list -A | grep "kubernetes-dashboard" >/dev/null 2>&1 && { echo "Kubernetes dashboard already installed."; return; }
+    printf "Specify the IP for keepalived to use as VIP, [Y/y] to install: "
+    read -r input
+    [ "${input}" ! = "y" ] && [ "${input}" ! = "Y" ] && return
+
+    helm upgrade --install kubernetes-dashboard /opt/rancher/k3s/agent/images/kubernetes-dashboard.tgz
 }
 
 main() {
     create_symlinks
     setup_interface
     setup_keepalived
-    setup_k3s
+    setup_k3s && setup_dashboard
 }
 
 main

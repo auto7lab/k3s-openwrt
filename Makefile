@@ -55,6 +55,25 @@ $(DIR)/data: $(FILES)
 	mkdir -p "$@/opt/rancher/k3s/agent/images"
 	curl -sfLo "$@/opt/rancher/k3s/agent/images/k3s-airgap-images-$(download_arch).tar.zst" \
 		"https://github.com/k3s-io/k3s/releases/download/v$(VERSION)/k3s-airgap-images-$(download_arch).tar.zst"
+	curl -sfLo "/tmp/helm.tar.gz" \
+		"https://get.helm.sh/helm-v3.15.3-linux-$(download_arch).tar.gz" && \
+		tar -C "/tmp" -xzf "/tmp/helm.tar.gz" linux-$(download_arch)/helm && \
+		mv "/tmp/linux-$(download_arch)/helm" "$@/usr/bin/helm" && \
+		rm -rf "/tmp/linux-$(download_arch)" && \
+		chmod a+x "$@/usr/bin/helm" && \
+		helm pull kubernetes-dashboard --repo https://kubernetes.github.io/dashboard --version 7.5.0 && \
+		mv kubernetes-dashboard-7.5.0.tgz "$@/opt/rancher/k3s/agent/images/kubernetes-dashboard.tgz" && \
+		docker pull docker.io/kubernetesui/dashboard-auth:1.1.3 && \
+		docker pull docker.io/kubernetesui/dashboard-api:1.7.0 && \
+		docker pull docker.io/kubernetesui/dashboard-web:1.4.0 && \
+		docker pull docker.io/kubernetesui/dashboard-metrics-scraper:1.1.1 && \
+		docker pull docker.io/library/kong:3.6 && \
+		docker save -o "$@/opt/rancher/k3s/agent/images/kubernetes-dashboard-images-7.5.0.tar" \
+		docker.io/kubernetesui/dashboard-auth:1.1.3 \
+		docker.io/kubernetesui/dashboard-api:1.7.0 \
+		docker.io/kubernetesui/dashboard-web:1.4.0 \
+		docker.io/kubernetesui/dashboard-metrics-scraper:1.1.1 \
+		docker.io/library/kong:3.6
 
 $(DIR)/pkg/data.tar.gz: $(DIR)/data
 	tar -C "$<" -czvf "$@" .
