@@ -1,19 +1,25 @@
-#!/bin/ash
+#!/bin/sh
 
 BIN_DIR=/usr/bin
+DATA_DIR=/opt/rancher/k3s
+
+printf "Remove k3s data? [Y/N] "
+read input
 
 for cmd in kubectl crictl ctr; do
     target="${BIN_DIR}/${cmd}"
     if [ -L "${target}" ]; then
         link_target=$(readlink "${target}")
-        if [ "${link_target}" == "${BIN_DIR}/k3s" ]; then
-            rm -rf ${target} && echo "removed ${target}"
+        if [ "${link_target}" = "${BIN_DIR}/k3s" ]; then
+            printf "Remove %s...\n" "${target}"
+            rm -f "${target}"
         fi
     fi
 done
 
-read -p "Are you want to remove data of k3s? [N/Y]"
-echo
-if [[ "$REPLY" == "Y" ]] || [[ "$REPLY" == "y" ]]; then
-    rm -rf /opt/rancher/k3s
-fi
+case "${input}" in
+    [Yy]*)
+        printf "Remove k3s data...\n"
+        rm -rf ${DATA_DIR}
+        ;;
+esac

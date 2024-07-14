@@ -8,6 +8,9 @@ PROG=/usr/bin/k3s
 K3S_CONFIG_FILE=/etc/rancher/k3s/config.yaml
 
 start_service() {
+    /sbin/modprobe nf_conntrack
+    /sbin/modprobe iptable_nat
+    /sbin/modprobe iptable_filter
     /sbin/modprobe br-netfilter
     /sbin/modprobe vxlan
 

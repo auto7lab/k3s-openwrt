@@ -4,7 +4,14 @@
 . /lib/functions/network.sh
 
 BIN_DIR=/usr/bin
+DATA_DIR=/opt/rancher/k3s
 CONFIG_FILE=/etc/rancher/k3s/config.yaml
+
+clear_input() {
+    while read -r -t 0; do
+        read -r
+    done
+}
 
 create_symlinks() {
     for cmd in kubectl crictl ctr; do
@@ -28,6 +35,7 @@ setup_interface() {
     network_get_device BIND_DEVICE "${DEFAULT_INTERFACE}"
 
     while true; do
+        clear_input
         printf "Specify the interface for k3s binding, ENTER to use %s: " "${DEFAULT_INTERFACE}"
         read -r input
         [ -n "${input}" ] && {
@@ -42,15 +50,16 @@ setup_interface() {
 
 setup_keepalived() {
     local role="BACKUP"
-    local vip=""
 
     while true; do
+        clear_input
         printf "Specify the IP for keepalived to use as VIP, ENTER to skip: "
         read -r input
         [ -z "${input}" ] && return
-        [ -n "${input}" ] && { vip=${input}; break; }
+        [ -n "${input}" ] && { BIND_VIP=${input}; break; }
     done
 
+    clear_input
     printf "Run keepalived as a MASTER node? ENTER or [Y/y] is YES, any other input as BACKUP node: "
     read -r input
     [ -z "${input}" ] || [ "${input}" = "y" ] || [ "${input}" = "Y" ] && role="MASTER"
@@ -67,9 +76,13 @@ vrrp_instance VI_1 {
         auth_pass "Woofu9ixierovunu"
     }
     virtual_ipaddress {
-        ${vip}
+        ${BIND_VIP}
     }
 }
+EOF
+    cat << EOF > /etc/config/keepalived
+config globals 'globals'
+    option alt_config_file          "/etc/keepalived/keepalived.conf"
 EOF
     service keepalived stop
     sleep 1
@@ -82,25 +95,33 @@ setup_k3s() {
     local server=""
     local token=""
 
-    printf "Setup as a k3s SERVER node? ENTER or Y/y is YES, any other input as an agent node: "
+    clear_input
+    printf "Setup as a k3s SERVER node? ENTER or [Y/y] is YES, any other input as an agent node: "
     read -r input
     [ -z "${input}" ] || [ "${input}" = "y" ] || [ "${input}" = "Y" ] && role="master"
 
     if [ "${role}" = "master" ]; then
-        printf "Specify k3s server node address to join, ENTER to SKIP and run a standalone server: "
-        read -r server
-        if [ -n "${server}" ]; then
-            while true; do
-                printf "Specify k3s server join token (get from the server file /opt/rancher/k3s/server/token): "
-                read -r token
-                [ -n "${token}" ] && break
-            done
-            {
-                echo "server: ${server}"
-                echo "token: ${token}"
-                echo
-            } >> "${CONFIG_FILE}"
-        fi
+        while true; do
+            clear_input
+            printf "Specify k3s server node address to join, ENTER to SKIP and run a standalone server: "
+            read -r server
+            if [ "${server#https://}" != "$server" ]; then
+                while true; do
+                    clear_input
+                    printf "Specify k3s server join token (get from the server file ${DATA_DIR}/server/token): "
+                    read -r token
+                    [ -n "${token}" ] && break
+                done
+                {
+                    echo "server: ${server}"
+                    echo "token: ${token}"
+                    echo
+                } >> "${CONFIG_FILE}"
+                break
+            else
+                printf "\033[0;31mInvalid server address, please specify the address with https://.\n\033[0m"
+            fi
+        done
         {
             echo "bind-address: ${BIND_ADDR}"
             echo "node-ip: ${BIND_ADDR}"
@@ -108,13 +129,19 @@ setup_k3s() {
         } >> "${CONFIG_FILE}"
     else
         while true; do
-            printf "Specify k3s server node address to join: "
+            clear_input
+            printf "Specify k3s server node address to join (https://<ip>:<port>): "
             read -r server
-            [ -n "${server}" ] && break
+            if [ "${server#https://}" != "$server" ]; then
+                break
+            else
+                printf "\033[0;31mInvalid server address, please specify the address with https://.\n\033[0m"
+            fi
         done
 
         while true; do
-            printf "Specify k3s agent join token (get from the server file /opt/rancher/k3s/server/agent-token): "
+            clear_input
+            printf "Specify k3s agent join token (get from the server file ${DATA_DIR}/server/agent-token): "
             read -r token
             [ -n "${token}" ] && break
         done
@@ -130,22 +157,40 @@ setup_k3s() {
 
     service k3s enable
     service k3s start
-    echo "Waiting for k3s service to startup..."
-    for i in $(seq 1 300); do
-        kubectl get nodes >/dev/null 2>&1 && { echo "K3s startup succeeded, try to use kubectl to deploy apps."; return; }
+    echo "Waiting k3s service to startup..."
+    for i in $(seq 1 600); do
+        kubectl get nodes --no-headers 2>/dev/null | grep "${BIND_ADDR}" | grep "Ready" >/dev/null && { echo "K3s startup succeeded, try to use kubectl to deploy apps." && return; }
         sleep 1
     done
-    echo "\033[0;31mStartup k3s failed, please check k3s logs.\033[0m"
+    echo "\033[0;31mK3s startup failed, please check k3s logs.\033[0m"
     return 1
 }
 
 setup_dashboard() {
     helm list -A | grep "kubernetes-dashboard" >/dev/null 2>&1 && { echo "Kubernetes dashboard already installed."; return; }
-    printf "Specify the IP for keepalived to use as VIP, [Y/y] to install: "
+    clear_input
+    printf "Install kubernetes dashboard?, [Y/n] to install: "
     read -r input
-    [ "${input}" ! = "y" ] && [ "${input}" ! = "Y" ] && return
-
-    helm upgrade --install kubernetes-dashboard /opt/rancher/k3s/agent/images/kubernetes-dashboard.tgz
+    case "${input}" in
+    [Yy]*) 
+        local namespace="kube-system"
+        helm upgrade --install -n ${namespace} kubernetes-dashboard ${DATA_DIR}/agent/images/kubernetes-dashboard.tgz --set kong.proxy.type=NodePort
+        if [[ $? -ne 0 ]]; then
+            echo "\033[0;31mKubernetes dashboard install failed, please check the logs.\033[0m"
+            return 1
+        else
+            local ip=${BIND_VIP}
+            if [ -z "${ip}" ]; then
+                ip=${BIND_ADDR}
+            fi
+            local port=$(kubectl -n ${namespace} get svc kubernetes-dashboard-kong-proxy -o jsonpath='{.spec.ports[0].nodePort}')
+            echo "Dashboard will be available at: https://${ip}:${port}."
+        fi
+        ;;
+    *)
+        return
+        ;;
+    esac
 }
 
 main() {

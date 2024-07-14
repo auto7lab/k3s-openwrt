@@ -19,7 +19,7 @@ Package: k3s
 Version: ${VERSION}-${PVERSION}
 Architecture: ${ARCH}
 Maintainer: Richard Feng <kvcnow@gmail.com>
-Depends: iptables, iptables-mod-extra, kmod-ipt-extra, iptables-mod-extra, kmod-br-netfilter, ca-certificates, vxlan
+Depends: iptables, iptables-mod-extra, kmod-ipt-extra, iptables-mod-extra, kmod-br-netfilter, ca-certificates, vxlan, keepalived
 License: Apache-2.0
 LicenseFiles: LICENSE
 Section: utils

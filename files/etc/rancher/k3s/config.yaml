@@ -1,7 +1,6 @@
 # admin kubeconfig
 write-kubeconfig: /root/.kube/config
-write-kubeconfig-mode: "0440"
-prefer-bundled-bin: true
+write-kubeconfig-mode: "0400"
 
 # logging
 # debug: false
